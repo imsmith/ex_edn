@@ -46,6 +46,25 @@ defmodule EDN do
     end
   end
 
+  @doc """
+  Encodes a term as EDN text. Elements are separated by `", "`.
+
+  Supports `nil`, booleans, atoms (as keywords), binaries, integers, floats,
+  lists (as EDN lists), maps, `MapSet`, `DateTime` (as `#inst`), the structs
+  in this package, and any other struct (as a map). Tuples, pids and the like
+  return `{:error, %Protocol.UndefinedError{}}`.
+  """
+  @spec encode(term) :: {:ok, String.t()} | {:error, Exception.t()}
+  def encode(term) do
+    {:ok, encode!(term)}
+  rescue
+    e in [Protocol.UndefinedError, ArgumentError] -> {:error, e}
+  end
+
+  @doc "Like `encode/1`, but returns the string and raises on failure."
+  @spec encode!(term) :: String.t()
+  def encode!(term), do: EDN.Encode.encode(term)
+
   defp to_error(%{__struct__: module} = e, stacktrace) do
     if module in Error.all(), do: {:error, e}, else: reraise(e, stacktrace)
   end
