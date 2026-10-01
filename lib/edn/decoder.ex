@@ -56,7 +56,7 @@ defmodule EDN.Decoder do
   # `#_` reads the next element and drops it. Tag handlers are not called while
   # reading it (`discard: true`).
   defp skip(<<"#_", rest::binary>> = at, ctx, depth) do
-    case skip(rest, ctx, depth) do
+    case skip(rest, ctx, enter(at, ctx, depth)) do
       "" ->
         fail(Error.MissingDiscardExpression, ctx, at, "#_ has no following element")
 
@@ -118,7 +118,7 @@ defmodule EDN.Decoder do
         fail(Error.IncompleteTag, ctx, at, "tag ##{name} has no element")
 
       rest ->
-        {element, rest} = value(rest, ctx, depth)
+        {element, rest} = value(rest, ctx, enter(at, ctx, depth))
         {apply_tag(name, element, at, ctx), rest}
     end
   end
@@ -289,7 +289,12 @@ defmodule EDN.Decoder do
 
     case ctx.keywords do
       :atom ->
-        String.to_atom(name)
+        try do
+          String.to_atom(name)
+        rescue
+          SystemLimitError ->
+            fail(Error.UnexpectedInput, ctx, at, "keyword :#{name} is too long to be an atom")
+        end
 
       :safe ->
         try do
@@ -307,7 +312,15 @@ defmodule EDN.Decoder do
         token |> String.trim_trailing("N") |> String.to_integer()
 
       Regex.match?(~r/\A[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?M?\z/, token) ->
-        case token |> String.trim_trailing("M") |> Float.parse() do
+        # Float.parse/1 returns :error for 1e999 but raises on a huge mantissa.
+        parsed =
+          try do
+            token |> String.trim_trailing("M") |> Float.parse()
+          rescue
+            ArgumentError -> :error
+          end
+
+        case parsed do
           {float, ""} -> float
           _ -> fail(Error.UnexpectedInput, ctx, at, "number out of range: #{token}")
         end

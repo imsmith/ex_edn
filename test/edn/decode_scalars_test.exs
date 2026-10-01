@@ -119,4 +119,18 @@ defmodule EDN.DecodeScalarsTest do
     assert d("; comment\r\n:a\r\n1\r\n") == [:a, 1]
     assert {:error, %Error.UnexpectedInput{line: 2}} = EDN.decode("1\r\n@")
   end
+
+  test "a keyword over the 255-character atom limit is an error, not a crash" do
+    assert {:ok, _} = EDN.decode(":" <> String.duplicate("a", 255))
+
+    assert {:error, %Error.UnexpectedInput{line: 1, col: 1}} =
+             EDN.decode(":" <> String.duplicate("a", 256))
+  end
+
+  test "a float literal too long for the VM is an error, not a crash" do
+    assert {:ok, _} = EDN.decode("1" <> String.duplicate("0", 308) <> ".0")
+
+    assert {:error, %Error.UnexpectedInput{}} =
+             EDN.decode("1" <> String.duplicate("0", 309) <> ".0")
+  end
 end

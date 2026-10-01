@@ -46,6 +46,7 @@ end
 
 defimpl EDN.Encode, for: Atom do
   def encode(atom) when atom in [nil, true, false], do: Atom.to_string(atom)
+  def encode(:/), do: raise(ArgumentError, "not a valid EDN keyword: :/")
   def encode(atom), do: ":" <> EDN.Encode.Util.name!(Atom.to_string(atom))
 end
 

@@ -120,4 +120,9 @@ defmodule EDN.EncodeTest do
   test "charlists encode as lists of integers" do
     assert EDN.encode!(~c"ab") == "(97, 98)"
   end
+
+  test "the bare symbol / is not a keyword, so :/ is refused rather than emitted" do
+    assert {:error, %ArgumentError{}} = EDN.encode(:/)
+    assert EDN.encode!(%Symbol{name: "/"}) == "/"
+  end
 end

@@ -117,4 +117,18 @@ defmodule EDN.DecodeCollectionsTest do
     assert {:error, %Error.UnbalancedDelimiter{line: 1, col: 7}} = EDN.decode("{:a 1}}")
     assert {:error, %Error.UnbalancedDelimiter{}} = EDN.decode("[1 2]]")
   end
+
+  test "tag chains and discard chains count toward the nesting cap" do
+    assert {:ok, _} = EDN.decode(String.duplicate("#a/b ", 512) <> "1")
+
+    assert {:error, %Error.UnexpectedInput{message: m}} =
+             EDN.decode(String.duplicate("#a/b ", 600) <> "1")
+
+    assert m =~ "deeper than 512"
+
+    assert {:error, %Error.UnexpectedInput{}} =
+             EDN.decode(String.duplicate("#_ ", 600) <> "1 2")
+
+    assert EDN.decode!("#_ #_ 1 2 3") == 3
+  end
 end
