@@ -53,12 +53,75 @@ defmodule EDN.Decoder do
     end
   end
 
+  # `#_` reads the next element and drops it. Tag handlers are not called while
+  # reading it (`discard: true`).
+  defp skip(<<"#_", rest::binary>> = at, ctx, depth) do
+    case skip(rest, ctx, depth) do
+      "" ->
+        fail(Error.MissingDiscardExpression, ctx, at, "#_ has no following element")
+
+      <<c, _::binary>> when c in @closers ->
+        fail(Error.MissingDiscardExpression, ctx, at, "#_ has no following element")
+
+      rest ->
+        {_discarded, rest} = value(rest, %{ctx | discard: true}, depth)
+        skip(rest, ctx, depth)
+    end
+  end
+
   defp skip(rest, _ctx, _depth), do: rest
 
   # -- values -------------------------------------------------------------------
 
   defp value(<<c, _::binary>> = at, ctx, _depth) when c in @closers,
     do: fail(Error.UnbalancedDelimiter, ctx, at, "unexpected #{<<c>>}")
+
+  defp value(<<?(, rest::binary>> = at, ctx, depth),
+    do: items(rest, at, ctx, enter(at, ctx, depth), ?), [])
+
+  defp value(<<?[, rest::binary>> = at, ctx, depth) do
+    {list, rest} = items(rest, at, ctx, enter(at, ctx, depth), ?], [])
+
+    case ctx.vectors do
+      :vector -> {EDN.Vector.from_list(list), rest}
+      :list -> {list, rest}
+    end
+  end
+
+  defp value(<<?{, rest::binary>> = at, ctx, depth) do
+    {list, rest} = items(rest, at, ctx, enter(at, ctx, depth), ?}, [])
+
+    if rem(length(list), 2) == 1,
+      do: fail(Error.OddExpressionCount, ctx, at, "map literal has an odd number of forms")
+
+    {list |> Enum.chunk_every(2) |> Map.new(fn [k, v] -> {k, v} end), rest}
+  end
+
+  defp value(<<?#, ?{, rest::binary>> = at, ctx, depth) do
+    {list, rest} = items(rest, at, ctx, enter(at, ctx, depth), ?}, [])
+    {MapSet.new(list), rest}
+  end
+
+  # `#` + alphabetic: a tag. Read the next element, then hand it to the handler.
+  defp value(<<?#, c, _::binary>> = at, ctx, depth) when c in ?a..?z or c in ?A..?Z do
+    <<?#, after_hash::binary>> = at
+    {name, rest} = token(after_hash)
+
+    unless symbol_name?(name),
+      do: fail(Error.UnexpectedInput, ctx, at, "invalid tag #{inspect(name)}")
+
+    case skip(rest, ctx, depth) do
+      "" ->
+        fail(Error.IncompleteTag, ctx, at, "tag ##{name} has no element")
+
+      <<c, _::binary>> when c in @closers ->
+        fail(Error.IncompleteTag, ctx, at, "tag ##{name} has no element")
+
+      rest ->
+        {element, rest} = value(rest, ctx, depth)
+        {apply_tag(name, element, at, ctx), rest}
+    end
+  end
 
   defp value(<<?", rest::binary>> = at, ctx, _depth), do: string(rest, at, ctx, [])
 
@@ -77,6 +140,53 @@ defmodule EDN.Decoder do
     case token(rest) do
       {"", _} -> fail(Error.UnexpectedInput, ctx, rest, "unexpected input")
       {token, tail} -> {atom(token, ctx, rest), tail}
+    end
+  end
+
+  # -- collections and tags ---------------------------------------------------------------
+
+  # Reads elements up to `closer`; returns them in source order.
+  defp items(rest, open, ctx, depth, closer, acc) do
+    case skip(rest, ctx, depth) do
+      "" ->
+        fail(Error.UnbalancedDelimiter, ctx, open, "unclosed #{<<opener(closer)>>}")
+
+      <<^closer, tail::binary>> ->
+        {Enum.reverse(acc), tail}
+
+      <<c, _::binary>> = at when c in @closers ->
+        fail(Error.UnbalancedDelimiter, ctx, at, "unexpected #{<<c>>}")
+
+      rest ->
+        {element, rest} = value(rest, ctx, depth)
+        items(rest, open, ctx, depth, closer, [element | acc])
+    end
+  end
+
+  defp opener(?)), do: ?(
+  defp opener(?]), do: ?[
+  defp opener(?}), do: ?{
+
+  defp enter(at, ctx, depth) do
+    if depth >= ctx.max_depth,
+      do: fail(Error.UnexpectedInput, ctx, at, "nesting deeper than #{ctx.max_depth}"),
+      else: depth + 1
+  end
+
+  defp apply_tag(name, element, _at, %{discard: true}),
+    do: %EDN.Tag{name: name, value: element}
+
+  defp apply_tag(name, element, at, ctx) do
+    case Map.fetch(ctx.handlers, name) do
+      {:ok, handler} ->
+        try do
+          handler.(element)
+        rescue
+          e in Error.InvalidTagValue -> fail(Error.InvalidTagValue, ctx, at, e.message)
+        end
+
+      :error ->
+        %EDN.Tag{name: name, value: element}
     end
   end
 
