@@ -206,8 +206,8 @@ defmodule EDN.Decoder do
             {IO.iodata_to_binary(acc), tail}
 
           {?\\, <<?u, hex::binary-size(4), tail::binary>>} ->
-            case unicode(hex) do
-              {:ok, char} -> string(tail, at, ctx, [acc, char])
+            case utf16_escape(hex, tail) do
+              {:ok, char, tail} -> string(tail, at, ctx, [acc, char])
               :error -> fail(Error.UnexpectedInput, ctx, tail, "invalid \\u escape")
             end
 
@@ -255,16 +255,43 @@ defmodule EDN.Decoder do
       else: fail(Error.UnexpectedInput, ctx, at, "unknown character \\#{token}")
   end
 
-  # `\uNNNN` as in Java. Surrogate halves are not scalar values: rejected.
+  defp hex4(hex) do
+    if Regex.match?(~r/\A[0-9a-fA-F]{4}\z/, hex),
+      do: {:ok, String.to_integer(hex, 16)},
+      else: :error
+  end
+
+  # `\uNNNN` as a character: one Java char, so surrogate halves are rejected.
   defp unicode(hex) do
-    with true <- Regex.match?(~r/\A[0-9a-fA-F]{4}\z/, hex),
-         {cp, ""} <- Integer.parse(hex, 16),
-         true <- cp not in 0xD800..0xDFFF do
-      {:ok, <<cp::utf8>>}
-    else
+    case hex4(hex) do
+      {:ok, cp} when cp not in 0xD800..0xDFFF -> {:ok, <<cp::utf8>>}
       _ -> :error
     end
   end
+
+  # `\uNNNN` inside a string. Java writes astral characters as a surrogate pair,
+  # so a high surrogate must be followed by `\uNNNN` holding a low surrogate.
+  defp utf16_escape(hex, tail) do
+    with {:ok, cp} <- hex4(hex) do
+      cond do
+        cp in 0xD800..0xDBFF -> low_surrogate(cp, tail)
+        cp in 0xDC00..0xDFFF -> :error
+        true -> {:ok, <<cp::utf8>>, tail}
+      end
+    end
+  end
+
+  defp low_surrogate(high, <<?\\, ?u, hex::binary-size(4), tail::binary>>) do
+    case hex4(hex) do
+      {:ok, low} when low in 0xDC00..0xDFFF ->
+        {:ok, <<0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00)::utf8>>, tail}
+
+      _ ->
+        :error
+    end
+  end
+
+  defp low_surrogate(_high, _tail), do: :error
 
   # -- atoms: nil, booleans, numbers, keywords, symbols ---------------------------
 

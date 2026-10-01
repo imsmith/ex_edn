@@ -117,7 +117,7 @@ defmodule EDN.DecodeScalarsTest do
 
   test "CRLF line endings, including after comments" do
     assert d("; comment\r\n:a\r\n1\r\n") == [:a, 1]
-    assert {:error, %Error.UnexpectedInput{line: 2}} = EDN.decode("1\r\n@")
+    assert {:error, %Error.UnexpectedInput{line: 2, col: 1}} = EDN.decode("1\r\n@")
   end
 
   test "a keyword over the 255-character atom limit is an error, not a crash" do
@@ -132,5 +132,23 @@ defmodule EDN.DecodeScalarsTest do
 
     assert {:error, %Error.UnexpectedInput{}} =
              EDN.decode("1" <> String.duplicate("0", 309) <> ".0")
+  end
+
+  test "Java-style surrogate pairs in strings decode to the astral character" do
+    assert d(~S("\ud83d\ude00")) == "😀"
+    assert d(~S("a\uD83D\uDE00b")) == "a😀b"
+    assert d(~S("\ud83d\ude00\ud83d\ude00")) == "😀😀"
+    assert d(~S("\u00e9")) == "é"
+  end
+
+  test "lone or mismatched surrogate escapes are errors" do
+    for bad <- [~S("\ud83d"), ~S("\ude00"), ~S("\ud83dx"), ~S("\ud83d\u0041"), ~S("\ude00\ud83d")] do
+      assert {:error, %Error.UnexpectedInput{}} = EDN.decode(bad), bad
+    end
+  end
+
+  test "a comma character can be written as \\u002C" do
+    assert d("\\u002C") == %Character{char: ","}
+    assert {:error, %Error.UnexpectedInput{}} = EDN.decode("\\,")
   end
 end

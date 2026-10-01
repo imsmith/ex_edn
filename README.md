@@ -46,6 +46,9 @@ Decoding one top-level form returns its value; several forms return a list.
 - Encoding writes elements separated by `", "`. Map entry order is unspecified, as in EDN itself.
 - Charlists encode as lists of integers. Tuples, pids and other non-EDN terms return an error.
 - Binaries that are not valid UTF-8 are rejected on encode.
+- A comma character encodes as `\u002C`, because the reader treats a comma as whitespace.
+- Strings accept Java-style surrogate pairs (`\ud83d\ude00`); lone surrogates are errors.
+- An invalid option value raises `ArgumentError` instead of returning `{:error, _}`.
 
 ## Migrating from Eden
 

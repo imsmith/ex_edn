@@ -29,12 +29,14 @@ defmodule EDN.Encode.Util do
   end
 
   # Mirrors the decoder's symbol grammar so we never emit text we cannot read back.
-  def name!(name) do
+  def name!(name) when is_binary(name) do
     if name == "/" or
          (Enum.all?(String.split(name, "/"), &part?/1) and length(String.split(name, "/")) <= 2),
        do: name,
        else: raise(ArgumentError, "not a valid EDN name: #{inspect(name)}")
   end
+
+  def name!(name), do: raise(ArgumentError, "not a valid EDN name: #{inspect(name)}")
 
   defp part?(part),
     do:
@@ -103,16 +105,37 @@ defimpl EDN.Encode, for: EDN.Character do
   def encode(%{char: "\r"}), do: "\\return"
   def encode(%{char: " "}), do: "\\space"
   def encode(%{char: "\t"}), do: "\\tab"
-  def encode(%{char: char}) when is_binary(char), do: "\\" <> char
+  # A comma is whitespace to the reader, so it cannot follow a backslash.
+  def encode(%{char: ","}), do: "\\u002C"
+
+  def encode(%{char: char}) when is_binary(char) do
+    if String.valid?(char) and String.length(char) == 1,
+      do: "\\" <> char,
+      else: raise(ArgumentError, "not a single EDN character: #{inspect(char)}")
+  end
+
+  def encode(%{char: char}),
+    do: raise(ArgumentError, "not a single EDN character: #{inspect(char)}")
 end
 
 defimpl EDN.Encode, for: EDN.UUID do
-  def encode(%{value: value}), do: "#uuid " <> EDN.Encode.encode(value)
+  def encode(%{value: value}) do
+    EDN.Tag.uuid(value)
+    "#uuid " <> EDN.Encode.encode(value)
+  end
 end
 
 defimpl EDN.Encode, for: EDN.Tag do
-  def encode(%{name: name, value: value}),
-    do: "#" <> EDN.Encode.Util.name!(name) <> " " <> EDN.Encode.encode(value)
+  def encode(%{name: name, value: value}) do
+    # Refuse built-in tags with values the default handlers cannot read back.
+    case name do
+      "inst" -> EDN.Tag.inst(value)
+      "uuid" -> EDN.Tag.uuid(value)
+      _ -> :ok
+    end
+
+    "#" <> EDN.Encode.Util.name!(name) <> " " <> EDN.Encode.encode(value)
+  end
 end
 
 defimpl EDN.Encode, for: Any do

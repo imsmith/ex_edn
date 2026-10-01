@@ -3,3 +3,5 @@
 /doc/
 erl_crash.dump
 *.ez
+# local symlink to the EDN spec, kept out of the repo
+/edn

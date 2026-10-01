@@ -125,4 +125,25 @@ defmodule EDN.EncodeTest do
     assert {:error, %ArgumentError{}} = EDN.encode(:/)
     assert EDN.encode!(%Symbol{name: "/"}) == "/"
   end
+
+  test "a comma character is written as \\u002C so the decoder can read it back" do
+    assert e(%Character{char: ","}) == "\\u002C"
+    assert EDN.decode!(e(%Character{char: ","})) == %Character{char: ","}
+  end
+
+  test "malformed Character structs are errors, never text the decoder rejects" do
+    for bad <- ["ab", "", "newline", 5, nil] do
+      assert {:error, %ArgumentError{}} = EDN.encode(%Character{char: bad}), inspect(bad)
+    end
+  end
+
+  test "malformed Symbol, UUID and built-in Tag structs return errors from encode/1" do
+    assert {:error, %ArgumentError{}} = EDN.encode(%Symbol{name: nil})
+    assert {:error, %ArgumentError{}} = EDN.encode(%Tag{name: nil, value: 1})
+    assert {:error, %EDN.Error.InvalidTagValue{}} = EDN.encode(%UUID{value: "nope"})
+    assert {:error, %EDN.Error.InvalidTagValue{}} = EDN.encode(%UUID{value: nil})
+    assert {:error, %EDN.Error.InvalidTagValue{}} = EDN.encode(%Tag{name: "inst", value: 5})
+    assert {:error, %EDN.Error.InvalidTagValue{}} = EDN.encode(%Tag{name: "uuid", value: "nope"})
+    assert {:ok, _} = EDN.encode(%Tag{name: "inst", value: "2020-01-01T00:00:00Z"})
+  end
 end
