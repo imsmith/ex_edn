@@ -127,7 +127,7 @@ defmodule EDN do
   """
   @spec encode(term) ::
           {:ok, String.t()}
-          | {:error, Protocol.UndefinedError.t() | ArgumentError.t() | Error.InvalidTagValue.t()}
+          | {:error, %Protocol.UndefinedError{} | %ArgumentError{} | Error.InvalidTagValue.t()}
   def encode(term) do
     {:ok, encode!(term)}
   rescue

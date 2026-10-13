@@ -135,7 +135,7 @@ end
 
 defimpl EDN.Encode, for: EDN.UUID do
   def encode(%{value: value}) do
-    EDN.Tag.uuid(value)
+    _validated = EDN.Tag.uuid(value)
     "#uuid " <> EDN.Encode.encode(value)
   end
 end
@@ -143,11 +143,12 @@ end
 defimpl EDN.Encode, for: EDN.Tag do
   def encode(%{name: name, value: value}) do
     # Refuse built-in tags with values the default handlers cannot read back.
-    case name do
-      "inst" -> EDN.Tag.inst(value)
-      "uuid" -> EDN.Tag.uuid(value)
-      _ -> :ok
-    end
+    _validated =
+      case name do
+        "inst" -> EDN.Tag.inst(value)
+        "uuid" -> EDN.Tag.uuid(value)
+        _ -> :ok
+      end
 
     "#" <> EDN.Encode.Util.name!(name) <> " " <> EDN.Encode.encode(value)
   end
