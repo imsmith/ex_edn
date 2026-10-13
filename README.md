@@ -18,7 +18,7 @@ Every public function has a `@spec`, and every struct has a `t/0`. `EDN.value/0`
 
 Elixir 1.20 infers types from guards and patterns and checks callers against them. The project compiles with `warnings_as_errors`, so a violation fails the build. `test/edn/type_check_test.exs` compiles a deliberately wrong call into `EDN.Vector.get/2` and asserts the compiler reports it. The doctests in each module's docs run under `test/edn/doctest_test.exs`.
 
-The checker does not read `@spec` yet; specs are for readers, ExDoc and Dialyzer.
+The checker does not read `@spec` yet; specs are for readers, ExDoc and Dialyzer. `mix dialyzer` runs Dialyzer with strict flags; dialyxir is the only dependency and is dev-only.
 
 ## Type mapping
 
