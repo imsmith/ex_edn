@@ -5,7 +5,9 @@ defmodule EDN.MixProject do
     [
       app: :ex_edn,
       version: "0.1.0",
-      elixir: "~> 1.15",
+      elixir: "~> 1.20",
+      # The 1.20 type checker reports violations as warnings; fail the build on them.
+      elixirc_options: [warnings_as_errors: true],
       deps: [],
       description:
         "EDN (extensible data notation) reader and writer for Elixir. No dependencies.",

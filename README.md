@@ -2,6 +2,8 @@
 
 EDN (extensible data notation) reader and writer for Elixir. No dependencies.
 
+Requires Elixir 1.20.
+
 ```elixir
 iex> EDN.decode("{:a 1, :b [1 2 3]}")
 {:ok, %{a: 1, b: #EDN.Vector<[1, 2, 3]>}}
@@ -9,6 +11,14 @@ iex> EDN.decode("{:a 1, :b [1 2 3]}")
 iex> EDN.encode(%{a: 1})
 {:ok, "{:a 1}"}
 ```
+
+## Types
+
+Every public function has a `@spec`, and every struct has a `t/0`. `EDN.value/0` is the union of everything `decode/2` can return, `EDN.option/0` is the decode option list, and `EDN.Error.t/0` is the union of the exceptions.
+
+Elixir 1.20 infers types from guards and patterns and checks callers against them. The project compiles with `warnings_as_errors`, so a violation fails the build. `test/edn/type_check_test.exs` compiles a deliberately wrong call into `EDN.Vector.get/2` and asserts the compiler reports it. The doctests in each module's docs run under `test/edn/doctest_test.exs`.
+
+The checker does not read `@spec` yet; specs are for readers, ExDoc and Dialyzer.
 
 ## Type mapping
 

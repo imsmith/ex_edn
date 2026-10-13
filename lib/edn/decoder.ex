@@ -11,7 +11,18 @@ defmodule EDN.Decoder do
   @closers [?), ?], ?}]
   @delims @ws ++ [?{, ?}, ?(, ?), ?[, ?], ?", ?;]
 
-  @doc "Decodes every top-level form in `input` into a list."
+  @typedoc "Decoder state threaded through every clause; `input` is kept for error positions."
+  @type ctx :: %{
+          input: String.t(),
+          handlers: %{String.t() => EDN.handler()},
+          keywords: :atom | :safe,
+          vectors: :vector | :list,
+          max_depth: pos_integer,
+          discard: boolean
+        }
+
+  @doc "Decodes every top-level form in `input` into a list. `opts` are validated by `EDN.decode!/2`."
+  @spec forms(String.t(), keyword) :: [EDN.value()]
   def forms(input, opts) do
     unless String.valid?(input),
       do: raise(Error.UnexpectedInput, message: "input is not valid UTF-8")
@@ -31,6 +42,7 @@ defmodule EDN.Decoder do
     forms(input, ctx, [])
   end
 
+  @spec forms(binary, ctx, [EDN.value()]) :: [EDN.value()]
   defp forms(rest, ctx, acc) do
     case skip(rest, ctx, 0) do
       "" ->
@@ -44,6 +56,7 @@ defmodule EDN.Decoder do
 
   # -- whitespace and comments ------------------------------------------------
 
+  @spec skip(binary, ctx, non_neg_integer) :: binary
   defp skip(<<c, rest::binary>>, ctx, depth) when c in @ws, do: skip(rest, ctx, depth)
 
   defp skip(<<?;, rest::binary>>, ctx, depth) do
@@ -73,6 +86,7 @@ defmodule EDN.Decoder do
 
   # -- values -------------------------------------------------------------------
 
+  @spec value(binary, ctx, non_neg_integer) :: {EDN.value(), binary}
   defp value(<<c, _::binary>> = at, ctx, _depth) when c in @closers,
     do: fail(Error.UnbalancedDelimiter, ctx, at, "unexpected #{<<c>>}")
 
@@ -146,6 +160,8 @@ defmodule EDN.Decoder do
   # -- collections and tags ---------------------------------------------------------------
 
   # Reads elements up to `closer`; returns them in source order.
+  @spec items(binary, binary, ctx, non_neg_integer, char, [EDN.value()]) ::
+          {[EDN.value()], binary}
   defp items(rest, open, ctx, depth, closer, acc) do
     case skip(rest, ctx, depth) do
       "" ->
@@ -198,7 +214,7 @@ defmodule EDN.Decoder do
         fail(Error.UnfinishedToken, ctx, at, "unterminated string")
 
       {i, 1} ->
-        <<chunk::binary-size(i), c, tail::binary>> = rest
+        <<chunk::binary-size(^i), c, tail::binary>> = rest
         acc = [acc, chunk]
 
         case {c, tail} do
@@ -384,11 +400,12 @@ defmodule EDN.Decoder do
 
   defp token(bin, n) do
     case bin do
-      <<_::binary-size(n), c, _::binary>> when c not in @delims -> token(bin, n + 1)
+      <<_::binary-size(^n), c, _::binary>> when c not in @delims -> token(bin, n + 1)
       _ -> {binary_part(bin, 0, n), binary_part(bin, n, byte_size(bin) - n)}
     end
   end
 
+  @spec fail(module, ctx, binary, String.t()) :: no_return
   defp fail(module, ctx, rest, message) do
     {line, col} = position(ctx.input, rest)
 
@@ -398,6 +415,7 @@ defmodule EDN.Decoder do
       col: col
   end
 
+  @spec position(String.t(), binary) :: {pos_integer, pos_integer}
   defp position(input, rest) do
     consumed = binary_part(input, 0, byte_size(input) - byte_size(rest))
     lines = String.split(consumed, "\n")

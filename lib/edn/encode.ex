@@ -2,9 +2,21 @@ defprotocol EDN.Encode do
   @moduledoc """
   Turns a term into EDN text. Implement it for your own structs to control
   their representation; structs without an implementation encode as maps.
+
+      iex> EDN.Encode.encode([1, :a, "s"])
+      ~s[(1, :a, "s")]
+
+  Implementations raise `ArgumentError` for a package struct whose fields
+  cannot be written as EDN, and `Protocol.UndefinedError` for non-EDN terms.
   """
   @fallback_to_any true
 
+  @doc """
+  Encodes `term` as EDN text.
+
+      iex> EDN.Encode.encode(%EDN.Symbol{name: "a/b"})
+      "a/b"
+  """
   @spec encode(t) :: String.t()
   def encode(term)
 end
@@ -12,9 +24,11 @@ end
 defmodule EDN.Encode.Util do
   @moduledoc false
 
+  @spec join(Enumerable.t(), String.t(), String.t()) :: String.t()
   def join(items, open, close),
     do: open <> Enum.map_join(items, ", ", &EDN.Encode.encode/1) <> close
 
+  @spec escape(String.t()) :: String.t()
   def escape(string) do
     for <<c <- string>>, into: "" do
       case c do
@@ -29,6 +43,7 @@ defmodule EDN.Encode.Util do
   end
 
   # Mirrors the decoder's symbol grammar so we never emit text we cannot read back.
+  @spec name!(term) :: String.t()
   def name!(name) when is_binary(name) do
     if name == "/" or
          (Enum.all?(String.split(name, "/"), &part?/1) and length(String.split(name, "/")) <= 2),
